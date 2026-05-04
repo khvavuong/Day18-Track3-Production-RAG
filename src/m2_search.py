@@ -38,6 +38,22 @@ def segment_vietnamese(text: str) -> str:
         return text
 
 
+def _bm25_tokenize(text: str) -> list[str]:
+    """
+    Tokenize for BM25: segment → expand compound tokens.
+    "nghỉ_phép" → ["nghỉ_phép", "nghỉ", "phép"]
+    Đảm bảo query ngắn (chưa có đủ context cho underthesea) vẫn khớp với
+    compound tokens đã index trong corpus.
+    """
+    segmented = segment_vietnamese(text).lower()
+    tokens: list[str] = []
+    for tok in segmented.split():
+        tokens.append(tok)
+        if "_" in tok:
+            tokens.extend(tok.split("_"))
+    return tokens
+
+
 # ─── BM25 ─────────────────────────────────────────────────
 
 
@@ -51,16 +67,13 @@ class BM25Search:
         """Index chunks with Vietnamese-aware BM25Okapi."""
         from rank_bm25 import BM25Okapi
         self.documents = chunks
-        self.corpus_tokens = [
-            segment_vietnamese(c["text"]).lower().split()
-            for c in chunks
-        ]
+        self.corpus_tokens = [_bm25_tokenize(c["text"]) for c in chunks]
         self.bm25 = BM25Okapi(self.corpus_tokens)
 
     def search(self, query: str, top_k: int = BM25_TOP_K) -> list[SearchResult]:
         if self.bm25 is None or not self.documents:
             return []
-        tokenized_query = segment_vietnamese(query).lower().split()
+        tokenized_query = _bm25_tokenize(query)
         scores = self.bm25.get_scores(tokenized_query)
         ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
         results = []

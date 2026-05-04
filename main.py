@@ -30,7 +30,7 @@ def main():
     print("\n📌 STEP 2: Running Production Pipeline...")
     print("-" * 40)
     from src.pipeline import build_pipeline, evaluate_pipeline
-    search, reranker = build_pipeline()
+    search, reranker, _ = build_pipeline()
     prod_results = evaluate_pipeline(search, reranker)
 
     # Move reports to reports/
