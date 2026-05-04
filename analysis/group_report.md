@@ -9,7 +9,7 @@
 |-----|--------|-----------|-----------|
 | | M1: Chunking | ☐ | /8 |
 | | M2: Hybrid Search | ☐ | /5 |
-| | M3: Reranking | ☐ | /5 |
+| Huỳnh Văn Nghĩa | M3: Reranking | ☑ | 5/5 |
 | | M4: Evaluation | ☐ | /4 |
 
 ## Kết quả RAGAS
