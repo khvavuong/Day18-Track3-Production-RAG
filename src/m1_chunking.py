@@ -7,12 +7,23 @@ So sánh với basic chunking (baseline) để thấy improvement.
 Test: pytest tests/test_m1.py
 """
 
-import os, sys, glob, re
+import glob
+import os
+import re
+import sys
+import warnings
 from dataclasses import dataclass, field
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import (DATA_DIR, HIERARCHICAL_PARENT_SIZE, HIERARCHICAL_CHILD_SIZE,
                     SEMANTIC_THRESHOLD)
+
+# Suppress known upstream FutureWarning from transformers tokenizer defaults.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*clean_up_tokenization_spaces.*",
+    category=FutureWarning,
+)
 
 
 @dataclass
@@ -20,6 +31,19 @@ class Chunk:
     text: str
     metadata: dict = field(default_factory=dict)
     parent_id: str | None = None
+
+
+_SEMANTIC_MODEL = None
+
+
+def _semantic_model():
+    """Lazily load and cache sentence transformer model."""
+    global _SEMANTIC_MODEL
+    if _SEMANTIC_MODEL is None:
+        from sentence_transformers import SentenceTransformer
+
+        _SEMANTIC_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+    return _SEMANTIC_MODEL
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -50,6 +74,11 @@ def _stats(lengths: list[int]) -> dict:
     }
 
 
+def _chunk_meta(metadata: dict, index: int, strategy: str) -> dict:
+    """Build common metadata fields for non-hierarchical chunks."""
+    return {**metadata, "chunk_index": index, "strategy": strategy}
+
+
 def load_documents(data_dir: str = DATA_DIR) -> list[dict]:
     """Load all markdown/text files from data/. (Đã implement sẵn)"""
     docs = []
@@ -72,7 +101,7 @@ def chunk_basic(text: str, chunk_size: int = 500, metadata: dict | None = None) 
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     chunks = []
     current = ""
-    for i, para in enumerate(paragraphs):
+    for para in paragraphs:
         if len(current) + len(para) > chunk_size and current:
             chunks.append(Chunk(text=current.strip(), metadata={**metadata, "chunk_index": len(chunks)}))
             current = ""
@@ -104,12 +133,9 @@ def chunk_semantic(text: str, threshold: float = SEMANTIC_THRESHOLD,
     if not sentences:
         return []
     if len(sentences) == 1:
-        return [Chunk(text=sentences[0], metadata={**metadata, "chunk_index": 0, "strategy": "semantic"})]
+        return [Chunk(text=sentences[0], metadata=_chunk_meta(metadata, 0, "semantic"))]
 
-    from sentence_transformers import SentenceTransformer
-
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    embeddings = model.encode(sentences, show_progress_bar=False)
+    embeddings = _semantic_model().encode(sentences, show_progress_bar=False)
 
     chunks: list[Chunk] = []
     current_group = [sentences[0]]
@@ -120,7 +146,7 @@ def chunk_semantic(text: str, threshold: float = SEMANTIC_THRESHOLD,
             chunks.append(
                 Chunk(
                     text=" ".join(current_group).strip(),
-                    metadata={**metadata, "chunk_index": len(chunks), "strategy": "semantic"},
+                    metadata=_chunk_meta(metadata, len(chunks), "semantic"),
                 )
             )
             current_group = []
@@ -130,7 +156,7 @@ def chunk_semantic(text: str, threshold: float = SEMANTIC_THRESHOLD,
         chunks.append(
             Chunk(
                 text=" ".join(current_group).strip(),
-                metadata={**metadata, "chunk_index": len(chunks), "strategy": "semantic"},
+                metadata=_chunk_meta(metadata, len(chunks), "semantic"),
             )
         )
 
